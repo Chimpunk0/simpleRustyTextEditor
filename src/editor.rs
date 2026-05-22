@@ -1,9 +1,6 @@
 use crossterm::event::{read, Event, Event::Key, KeyCode::Char, KeyEvent, KeyModifiers};
-use crossterm::execute;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use crossterm::terminal::size;
-use crossterm::cursor::MoveTo;
-use std::io::stdout;
+mod terminal;
+use terminal::Terminal;
 
 pub struct Editor {
     should_quit: bool,
@@ -18,17 +15,19 @@ impl Editor {
      * - -> Self means that the function returns an instance of struct it is implemented on, in
      * this case, an Editor instance
      */
-    pub fn default() -> Self {
+    //const here means that the function will be evaluated at compile time, not runtime
+    pub const fn default() -> Self {
         // In Rust: the last line of a block is returned if it does not end with a semicolon
         // Here the last line returns an Editor instance, empty
-        Editor { should_quit: false }
+        // there can be Editor or Self
+        Self { should_quit: false }
     }
 
     // mut indicated that we will be modifying the reference
     pub fn run(&mut self) {
-        Self::initialize().unwrap();
+        Terminal::initialize().unwrap();
         let result = self.repl();
-        Self::terminate().unwrap();
+        Terminal::terminate().unwrap();
         result.unwrap();
     }
 
@@ -38,30 +37,15 @@ impl Editor {
      -> Result<(), std::io::Error> means that the function returns a Result type,
      either Ok with nothing or Err with a std::io::Error in it
      */
-    fn initialize() -> Result<(), std::io::Error> {
-        // ? unwraps the result, returning the error if it is Err, or continuing if it is Ok
-        enable_raw_mode()?;
-        Self::clear_screen()
 
-    }
-    fn terminate() -> Result<(), std::io::Error> {
-        disable_raw_mode()
-    }
-    fn clear_screen() -> Result<(), std::io::Error> {
-        let mut stdout = stdout();
-        /*
-        execute! macro is a macro that executes a function on the stdout object.
-         */
-        execute!(stdout, Clear(ClearType::All))
-    }
     fn repl(&mut self) -> Result<(), std::io::Error> {
         loop {
-            let event = read()?;
-            self.evaluate_event(&event);
             self.refresh_screen()?;
             if self.should_quit {
                 break;
             }
+            let event = read()?;
+            self.evaluate_event(&event);
         }
         Ok(())
 
@@ -79,16 +63,26 @@ impl Editor {
         }
     }
 
+
     fn refresh_screen(&self) -> Result<(), std::io::Error> {
         if self.should_quit {
-            Self::clear_screen()?;
+            Terminal::clear_screen()?;
             println!("Goodbye.\r\n");
+        } else {
+            Self::draw_rows()?;
+            Terminal::move_cursor_to(0, 0)?;
         }
         Ok(())
     }
 
-    fn draw_rows(&self) {
-        let term_size = size();
-        println!("{:?}", term_size);
+    fn draw_rows() -> Result<(), std::io::Error> {
+        let height = Terminal::size()?.1;
+        for current_row in 0..height {
+            print!("~");
+            if current_row + 1 < height {
+                print!("\r\n");
+            }
+        }
+        Ok(())
     }
 }
