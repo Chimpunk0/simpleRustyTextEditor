@@ -1,3 +1,4 @@
+#![warn(clippy::all, clippy::pedantic)] //we tell clippy which lints to enable by default
 mod editor;
 use editor::Editor;
 

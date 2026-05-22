@@ -27,19 +27,15 @@ impl Editor {
             match read() {
                 // this says, if read returns OK and inside is a Key, process event in the "Key box"
                 Ok(Key(event)) => {
-                    println!("{:?} \r", event);
-                    match (event.code) {
-                        Char(c) => {
-                            if c == 'q' {
-                                break;
-                            }
+                    println!("{event:?} \r");
+                    if let Char(c) = event.code {
+                        if c == 'q' {
+                            break;
                         }
-                        // this says "do nothing" () for any other ("_") key
-                        _ => (),
                     }
                 }
                 // {:?} prints the debug representation of the error
-                Err(err) => println!("Error: {}", err),
+                Err(err) => println!("Error: {err}"),
                 _ => (),
             }
         }
