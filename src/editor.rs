@@ -1,9 +1,8 @@
 use crossterm::event::{read, Event, Event::Key, KeyCode::Char, KeyEvent, KeyModifiers};
-use crossterm::queue;
-
 use std::io::Error;
 mod terminal;
 use terminal::{Terminal, Size, Position};
+use crate::editor::terminal::ClearLineDirection::{All, Right};
 
 pub struct Editor {
     should_quit: bool,
@@ -74,6 +73,7 @@ impl Editor {
             Terminal::print("Goodbye.\r\n")?;
         } else {
             Self::draw_rows()?;
+            Terminal::display_editor_title()?;
             Terminal::move_cursor_to(Position{x: 0, y: 0})?;
         }
         Terminal::show_cursor()?;
@@ -84,10 +84,10 @@ impl Editor {
     fn draw_rows() -> Result<(), Error> {
         let Size{height, ..} = Terminal::size()?;
         for current_row in 0..height {
-            Terminal::clear_line()?;
+            Terminal::clear_line(All)?;
             Terminal::print("~")?;
             if current_row + 1 < height {
-                Terminal::print("\r\n~")?;
+                Terminal::print("\r\n")?;
             }
         }
         Ok(())
