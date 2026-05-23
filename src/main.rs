@@ -1,4 +1,4 @@
-#![warn(clippy::all, clippy::pedantic)] //we tell clippy which lints to enable by default
+#![warn(clippy::all, clippy::pedantic, clippy::print_stdout)] //we tell clippy which lints to enable by default
 mod editor;
 use editor::Editor;
 
