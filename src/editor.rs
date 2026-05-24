@@ -1,4 +1,9 @@
-use crossterm::event::{Event, Event::Key, KeyCode::Char, KeyEvent, KeyModifiers, read};
+use core::cmp::min;
+use crossterm::event::{
+    Event::{self, Key},
+    KeyCode::{self, Char},
+    KeyEvent, KeyEventKind, KeyModifiers, read,
+};
 use std::io::Error;
 mod terminal;
 use terminal::{Position, Size, Terminal};
@@ -6,25 +11,20 @@ use terminal::{Position, Size, Terminal};
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[derive(Default)]
 pub struct Editor {
     should_quit: bool,
+    location: Location,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Location {
+    x: usize,
+    y: usize,
 }
 
 impl Editor {
-    /*
-     * default implementation of editor
-     * - empty brackets mean that function takes no arguments and it can be
-     * used as a static method
-     * - -> Self means that the function returns an instance of struct it is implemented on, in
-     * this case, an Editor instance
-     */
-    //const here means that the function will be evaluated at compile time, not runtime
-    pub const fn default() -> Self {
-        // In Rust: the last line of a block is returned if it does not end with a semicolon
-        // Here the last line returns an Editor instance, empty
-        // there can be Editor or Self
-        Self { should_quit: false }
-    }
+    // default function deleted because now Editor struct derives Default
 
     // mut indicated that we will be modifying the reference
     pub fn run(&mut self) {
@@ -48,36 +48,87 @@ impl Editor {
                 break;
             }
             let event = read()?;
-            self.evaluate_event(&event);
+            self.evaluate_event(&event)?;
         }
         Ok(())
     }
-    fn evaluate_event(&mut self, event: &Event) {
+    fn move_point(&mut self, key_code: KeyCode) -> Result<(), Error> {
+        let Location { mut x, mut y } = self.location;
+        let Size { width, height } = Terminal::size()?;
+        match key_code {
+            KeyCode::Up => {
+                y = y.saturating_sub(1);
+            }
+            KeyCode::Down => {
+                y = min(height.saturating_sub(1), y.saturating_add(1));
+            }
+            KeyCode::Left => {
+                x = x.saturating_sub(1);
+            }
+            KeyCode::Right => {
+                x = min(width.saturating_sub(1), x.saturating_add(1));
+            }
+            KeyCode::PageUp => {
+                y = 0;
+            }
+            KeyCode::PageDown => {
+                y = height.saturating_sub(1);
+            }
+            KeyCode::Home => {
+                x = 0;
+            }
+            KeyCode::End => {
+                x = width.saturating_sub(1);
+            }
+            _ => (),
+        }
+        self.location = Location { x, y };
+        Ok(())
+    }
+    fn evaluate_event(&mut self, event: &Event) -> Result<(), Error> {
         // the ".." tells rust to ignore the rest of the fields in the KeyEvent struct
         if let Key(KeyEvent {
-            code, modifiers, ..
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            ..
         }) = event
         {
             match code {
                 // we are operating on a reference to an event, so (*)Modifiers
-                Char('q') if *modifiers == KeyModifiers::CONTROL => {
+                KeyCode::Char('q') if *modifiers == KeyModifiers::CONTROL => {
                     self.should_quit = true;
+                }
+                KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+                | KeyCode::Home
+                | KeyCode::End => {
+                    self.move_point(*code)?;
                 }
                 _ => (),
             }
         }
+        Ok(())
     }
 
     fn refresh_screen(&self) -> Result<(), Error> {
-        Terminal::hide_cursor()?;
+        Terminal::hide_caret()?;
+        Terminal::move_caret_to(Position::default())?;
         if self.should_quit {
             Terminal::clear_screen()?;
             Terminal::print("Goodbye.\r\n")?;
         } else {
             Self::draw_rows()?;
-            Terminal::move_cursor_to(Position { x: 0, y: 0 })?;
+            Terminal::move_caret_to(Position {
+                col: self.location.x,
+                row: self.location.y,
+            })?;
         }
-        Terminal::show_cursor()?;
+        Terminal::show_caret()?;
         Terminal::execute()?;
         Ok(())
     }
@@ -94,7 +145,7 @@ impl Editor {
         //in the middle.
         //It is allowed to be a bit off center
 
-        #[allow(clipy::integer_division)]
+        #[allow(clippy::integer_division)]
         let padding = (width.saturating_sub(len)) / 2;
         let spaces = " ".repeat(padding.saturating_sub(1));
         welcome_message = format!("~{spaces}{welcome_message}");
@@ -115,7 +166,7 @@ impl Editor {
              * we allow this since we don't care if our message is exactly in the middle
              * it is allowed to be a bit a bit up or down
              */
-            #[allow(clipy::integer_division)]
+            #[allow(clippy::integer_division)]
             if current_row == height / 3 {
                 Self::draw_welcome_message()?;
             } else {
