@@ -1,17 +1,12 @@
-use crossterm::cursor::{MoveTo, Hide, Show};
-use crossterm::queue;
+use core::fmt::Display;
+use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::style::Print;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType};
-use std::io::{stdout, Error, Write};
-use crate::editor::terminal::ClearLineDirection::Right;
+use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode, size};
+use crossterm::{Command, queue};
+use std::io::{Error, Write, stdout};
 // Write is a Trait used to write to a stream.
 
-pub enum ClearLineDirection {
-    Right,
-    Left,
-    All,
-}
-#[derive(Copy, Clone)]  // Copy and Clone are used to make a copy of a struct. - Traits
+#[derive(Copy, Clone)] // Copy and Clone are used to make a copy of a struct. - Traits
 pub struct Size {
     pub height: u16,
     pub width: u16,
@@ -32,42 +27,33 @@ impl Terminal {
     pub fn initialize() -> Result<(), Error> {
         enable_raw_mode()?;
         Self::clear_screen()?;
-        Self::move_cursor_to(Position{x: 0, y: 0})?;
+        Self::move_cursor_to(Position { x: 0, y: 0 })?;
         Self::execute()?;
         Ok(())
     }
     pub fn clear_screen() -> Result<(), Error> {
-        queue!(stdout(), Clear(ClearType::UntilNewLine))?;
+        Self::queue_command(Clear(ClearType::All))?;
         Ok(())
     }
-    pub fn clear_line(direction: ClearLineDirection) -> Result<(), Error> {
-        match direction {
-            ClearLineDirection::Right => {
-                queue!(stdout(), Clear(ClearType::UntilNewLine))?;
-            }
-            ClearLineDirection::Left => {
-                queue!(stdout(), Print("\x1b[1K"))?;
-            }
-            ClearLineDirection::All => {
-                queue!(stdout(), Clear(ClearType::CurrentLine))?;
-            }
-        }
+    pub fn clear_line() -> Result<(), Error> {
+        Self::queue_command(Clear(ClearType::CurrentLine))?;
         Ok(())
     }
     pub fn move_cursor_to(position: Position) -> Result<(), Error> {
-        queue!(stdout(), MoveTo(position.x, position.y))?;
+        Self::queue_command(MoveTo(position.x, position.y))?;
         Ok(())
     }
     pub fn hide_cursor() -> Result<(), Error> {
-        queue!(stdout(), Hide)?;
+        Self::queue_command(Hide)?;
         Ok(())
     }
     pub fn show_cursor() -> Result<(), Error> {
-        queue!(stdout(), Show)?;
+        Self::queue_command(Show)?;
         Ok(())
     }
-    pub fn print(string: &str) -> Result<(), Error> {
-        queue!(stdout(), Print(string))?;
+    // This is one way of requesting that whatever is passed to this method should implement the Display trait.
+    pub fn print<T: Display>(string: T) -> Result<(), Error> {
+        Self::queue_command(Print(string))?;
         Ok(())
     }
     pub fn size() -> Result<Size, Error> {
@@ -78,17 +64,9 @@ impl Terminal {
         stdout().flush()?;
         Ok(())
     }
-    pub fn display_editor_title() -> Result<(), Error> {
-        let size = Self::size()?;
-        let name = env!("CARGO_PKG_NAME");
-        let version = env!("CARGO_PKG_VERSION");
-        let message = format!("{name} -- version {version}");
-        Self::move_cursor_to(Position{
-            x: (size.width/2u16) - (message.len() as u16)/2,
-            y: size.height/ 3u16
-        })?;
-        Self::clear_line(Right)?;
-        Self::print(&message)?;
+    // this tells rust that this method is generic over any type that implements the Command trait
+    fn queue_command<T: Command>(command: T) -> Result<(), Error> {
+        queue!(stdout(), command)?;
         Ok(())
     }
 }
