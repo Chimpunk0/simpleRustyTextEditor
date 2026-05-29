@@ -4,7 +4,7 @@ use crossterm::event::{
     KeyCode::{self},
     KeyEvent, KeyEventKind, KeyModifiers, read,
 };
-use std::io::Error;
+use std::{env, io::Error};
 mod terminal;
 mod view;
 
@@ -30,9 +30,16 @@ impl Editor {
     // mut indicated that we will be modifying the reference
     pub fn run(&mut self) {
         Terminal::initialize().unwrap();
+        self.handle_args();
         let result = self.repl();
         Terminal::terminate().unwrap();
         result.unwrap();
+    }
+    fn handle_args(&mut self) {
+        let args: Vec<String> = std::env::args().collect();
+        if let Some(file_name) = args.get(1) {
+            self.view.load(file_name);
+        }
     }
 
     /*Self is the same as this in java
