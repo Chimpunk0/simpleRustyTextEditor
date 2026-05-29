@@ -21,10 +21,9 @@ pub struct Position {
 ///Represents the Terminal.
 ///Edge case for platforms where 'usize' < 'u16'
 ///Regardless of the actual size of the Terminal, representation only spans
-///over at most 'usize::MAX' or 'u16::size' rows/columns, whichever is smaller.
-///Each size returned truncates to min('usize::MAX', 'u16::MAX')
+///over at most '`usize::MAX`' or '`u16::size`' rows/columns, whichever is smaller.
+///Each size returned truncates to min('`usize::MAX`', '`u16::MAX`')
 ///And should you attempt to set the caret out of these bounds, it will be clamped to the nearest valid position.
-
 pub struct Terminal;
 
 impl Terminal {
@@ -49,7 +48,7 @@ impl Terminal {
     }
     /// Moves the caret to the fiven Position
     /// # Arguments
-    ///  * 'Position' - the 'position' to move the caret to. Will be truncated to 'u16::MAX' if out of bounds.
+    ///  * 'Position' - the 'position' to move the caret to. Will be truncated to '`u16::MAX`' if out of bounds.
     pub fn move_caret_to(position: Position) -> Result<(), Error> {
         // clippy::as_conversions:: se doc above
         #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
@@ -65,7 +64,7 @@ impl Terminal {
         Ok(())
     }
     // This is one way of requesting that whatever is passed to this method should implement the Display trait.
-    pub fn print<T: Display>(string: T) -> Result<(), Error> {
+    pub fn print(string: &str) -> Result<(), Error> {
         Self::queue_command(Print(string))?;
         Ok(())
     }
