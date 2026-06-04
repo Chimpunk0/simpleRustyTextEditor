@@ -1,3 +1,6 @@
+use self::line::Line;
+use std::cmp::min;
+
 use super::{
     editorcommand::{Direction, EditorCommand},
     terminal::{Position, Size, Terminal},
@@ -61,9 +64,14 @@ impl View {
     pub fn get_position(&self) -> Position {
         self.location.subtract(&self.scroll_offset).into()
     }
+    // clippy::arithmetic_side_effects: This function performs arithmetic calculations
+    // after explicitly checking that the target value will be within bounds.
+    #[allow(clippy::arithmetic_side_effects)]
     fn move_text_location(&mut self, direction: &Direction) {
         let Location { mut x, mut y } = self.location;
-        let Size { height, width } = self.size;
+        let Size { height, .. } = self.size;
+        // This match moves the positon, but does not check for all boundaries.
+        // The final boundary checking happens after the match statement.
         match direction {
             Direction::Up => {
                 y = y.saturating_sub(1);
@@ -72,24 +80,42 @@ impl View {
                 y = y.saturating_add(1);
             }
             Direction::Left => {
-                x = x.saturating_sub(1);
+                // If we are not at the start of the line, move to the left (No saturating_sub needed due to the explicit check that x>0)
+                if x > 0 {
+                    x -= 1;
+                } else if y > 0 {
+                    y -= 1;
+                    // if there is a line, return line.len(). if not, return 0.
+                    //You can express the same with an if..let or a match.
+                    x = self.buffer.lines.get(y).map_or(0, Line::len);
+                }
             }
             Direction::Right => {
-                x = x.saturating_add(1);
+                let width = self.buffer.lines.get(y).map_or(0, Line::len); //line width
+                if x < width {
+                    // if we are not at the end of the line, move to the right
+                    x += 1;
+                } else if y < height {
+                    // if we are not at the end of the buffer, move to the next line
+                    y = y.saturating_add(1);
+                    x = 0;
+                }
             }
-            Direction::PageUp => {
-                y = 0;
-            }
-            Direction::PageDown => {
-                y = height.saturating_sub(1);
-            }
-            Direction::Home => {
-                x = 0;
-            }
-            Direction::End => {
-                x = width.saturating_sub(1);
-            }
+            Direction::PageUp => y = y.saturating_sub(height).saturating_sub(1),
+            Direction::PageDown => y = y.saturating_add(height).saturating_add(1),
+            Direction::Home => x = 0,
+            Direction::End => x = self.buffer.lines.get(y).map_or(0, Line::len), // move x by line width
         }
+        // snap to valid position
+        y = min(y, self.buffer.lines.len());
+        // If there is no line present, we return 0 for x.
+        // If a line is present, we call a closure and pass line to it. That closure computes the min between line.len() and x, and returns the result.
+        // We met closures first when discussing the Panic Hook.
+        x = self
+            .buffer
+            .lines
+            .get(y)
+            .map_or(0, |line| min(line.len(), x));
         self.location = Location { x, y };
         self.scroll_location_into_view();
     }
