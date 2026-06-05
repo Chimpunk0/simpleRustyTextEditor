@@ -9,45 +9,23 @@ const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 mod buffer;
 use buffer::Buffer;
-mod location;
-use location::Location;
 mod line;
+
+#[derive(Copy, Clone, Default)]
+pub struct Location {
+    pub grapheme_index: usize,
+    pub line_index: usize,
+}
 
 pub struct View {
     buffer: Buffer,
     needs_redraw: bool,
     size: Size,
-    location: Location,
-    scroll_offset: Location,
+    text_location: Location,
+    scroll_offset: Position,
 }
 
 impl View {
-    pub fn render(&mut self) {
-        if !self.needs_redraw {
-            return;
-        }
-        let Size { height, width } = self.size;
-        if height == 0 || width == 0 {
-            return;
-        }
-        // we allow this since we don't care if our welcome message is put _exactly_ in the middle.
-        // it's allowed to be a bit too far up or down
-        #[allow(clippy::integer_division)]
-        let vertical_center = height / 3;
-        let top = self.scroll_offset.y;
-        for current_row in 0..height {
-            if let Some(line) = self.buffer.lines.get(current_row.saturating_add(top)) {
-                let left = self.scroll_offset.x;
-                let right = self.scroll_offset.x.saturating_add(width);
-                Self::render_line(current_row, &line.get(left..right));
-            } else if current_row == vertical_center && self.buffer.is_empty() {
-                Self::render_line(current_row, &Self::build_welcome_message(width));
-            } else {
-                Self::render_line(current_row, "~");
-            }
-        }
-        self.needs_redraw = false;
-    }
     pub fn handle_command(&mut self, command: EditorCommand) {
         match command {
             EditorCommand::Resize(size) => self.resize(size),
@@ -61,97 +39,185 @@ impl View {
             self.needs_redraw = true;
         }
     }
-    pub fn get_position(&self) -> Position {
-        self.location.subtract(&self.scroll_offset).into()
-    }
-    // clippy::arithmetic_side_effects: This function performs arithmetic calculations
-    // after explicitly checking that the target value will be within bounds.
-    #[allow(clippy::arithmetic_side_effects)]
-    fn move_text_location(&mut self, direction: &Direction) {
-        let Location { mut x, mut y } = self.location;
-        let Size { height, .. } = self.size;
-        // This match moves the positon, but does not check for all boundaries.
-        // The final boundary checking happens after the match statement.
-        match direction {
-            Direction::Up => {
-                y = y.saturating_sub(1);
-            }
-            Direction::Down => {
-                y = y.saturating_add(1);
-            }
-            Direction::Left => {
-                // If we are not at the start of the line, move to the left (No saturating_sub needed due to the explicit check that x>0)
-                if x > 0 {
-                    x -= 1;
-                } else if y > 0 {
-                    y -= 1;
-                    // if there is a line, return line.len(). if not, return 0.
-                    //You can express the same with an if..let or a match.
-                    x = self.buffer.lines.get(y).map_or(0, Line::len);
-                }
-            }
-            Direction::Right => {
-                let width = self.buffer.lines.get(y).map_or(0, Line::len); //line width
-                if x < width {
-                    // if we are not at the end of the line, move to the right
-                    x += 1;
-                } else if y < height {
-                    // if we are not at the end of the buffer, move to the next line
-                    y = y.saturating_add(1);
-                    x = 0;
-                }
-            }
-            Direction::PageUp => y = y.saturating_sub(height).saturating_sub(1),
-            Direction::PageDown => y = y.saturating_add(height).saturating_add(1),
-            Direction::Home => x = 0,
-            Direction::End => x = self.buffer.lines.get(y).map_or(0, Line::len), // move x by line width
-        }
-        // snap to valid position
-        y = min(y, self.buffer.lines.len());
-        // If there is no line present, we return 0 for x.
-        // If a line is present, we call a closure and pass line to it. That closure computes the min between line.len() and x, and returns the result.
-        // We met closures first when discussing the Panic Hook.
-        x = self
-            .buffer
-            .lines
-            .get(y)
-            .map_or(0, |line| min(line.len(), x));
-        self.location = Location { x, y };
-        self.scroll_location_into_view();
-    }
+
     fn resize(&mut self, to: Size) {
         self.size = to;
-        self.scroll_location_into_view();
+        self.scroll_text_location_into_view();
         self.needs_redraw = true;
     }
-    fn scroll_location_into_view(&mut self) {
-        let Location { x, y } = self.location;
-        let Size { width, height } = self.size;
-        let mut offset_changed = false;
 
-        // Scroll vertically
-        if y < self.scroll_offset.y {
-            self.scroll_offset.y = y;
-            offset_changed = true;
-        } else if y >= self.scroll_offset.y.saturating_add(height) {
-            self.scroll_offset.y = y.saturating_sub(height).saturating_add(1);
-            offset_changed = true;
+    // region: Rendering
+    pub fn render(&mut self) {
+        if !self.needs_redraw {
+            return;
         }
-
-        //Scroll horizontally
-        if x < self.scroll_offset.x {
-            self.scroll_offset.x = x;
-            offset_changed = true;
-        } else if x >= self.scroll_offset.x.saturating_add(width) {
-            self.scroll_offset.x = x.saturating_sub(width).saturating_add(1);
-            offset_changed = true;
+        let Size { height, width } = self.size;
+        if height == 0 || width == 0 {
+            return;
         }
-        self.needs_redraw = offset_changed;
+        // we allow this since we don't care if our welcome message is put _exactly_ in the middle.
+        // it's allowed to be a bit too far up or down
+        #[allow(clippy::integer_division)]
+        let vertical_center = height / 3;
+        let top = self.scroll_offset.row;
+        for current_row in 0..height {
+            if let Some(line) = self.buffer.lines.get(current_row.saturating_add(top)) {
+                let left = self.scroll_offset.col;
+                let right = self.scroll_offset.col.saturating_add(width);
+                Self::render_line(current_row, &line.get_visible_graphemes(left..right));
+            } else if current_row == vertical_center && self.buffer.is_empty() {
+                Self::render_line(current_row, &Self::build_welcome_message(width));
+            } else {
+                Self::render_line(current_row, "~");
+            }
+        }
+        self.needs_redraw = false;
     }
+
     fn render_line(at: usize, line_text: &str) {
         let result = Terminal::print_row(at, line_text);
         debug_assert!(result.is_ok(), "Failed to render line");
     }
+
+    // endregion
+
+    // region: Scrolling
+
+    fn scroll_vertically(&mut self, to: usize) {
+        let Size { height, .. } = self.size;
+        let offset_changed = if to < self.scroll_offset.row {
+            self.scroll_offset.row = to;
+            true
+        } else if to >= self.scroll_offset.row.saturating_add(height) {
+            self.scroll_offset.row = to.saturating_sub(height).saturating_add(1);
+            true
+        } else {
+            false
+        };
+        self.needs_redraw = self.needs_redraw || offset_changed;
+    }
+    fn scroll_horizontally(&mut self, to: usize) {
+        let Size { width, .. } = self.size;
+        let offset_changed = if to < self.scroll_offset.col {
+            self.scroll_offset.col = to;
+            true
+        } else if to >= self.scroll_offset.col.saturating_add(width) {
+            self.scroll_offset.col = to.saturating_sub(width).saturating_add(1);
+            true
+        } else {
+            false
+        };
+        self.needs_redraw = self.needs_redraw || offset_changed;
+    }
+    fn scroll_text_location_into_view(&mut self) {
+        let Position { row, col } = self.text_location_to_position();
+        self.scroll_vertically(row);
+        self.scroll_horizontally(col);
+    }
+
+    // endregion
+
+    // region: Location and Position Handling
+
+    pub fn caret_position(&self) -> Position {
+        self.text_location_to_position()
+            .saturating_sub(self.scroll_offset)
+    }
+
+    fn text_location_to_position(&self) -> Position {
+        let row = self.text_location.line_index;
+        let col = self.buffer.lines.get(row).map_or(0, |line| {
+            line.width_until(self.text_location.grapheme_index)
+        });
+        Position { col, row }
+    }
+
+    // endregion
+
+    // region: text location movement
+
+    fn move_text_location(&mut self, direction: &Direction) {
+        let Size { height, .. } = self.size;
+        // This match moves the positon, but does not check for all boundaries.
+        // The final boundarline checking happens after the match statement.
+        match direction {
+            Direction::Up => self.move_up(1),
+            Direction::Down => self.move_down(1),
+            Direction::Left => self.move_left(),
+            Direction::Right => self.move_right(),
+            Direction::PageUp => self.move_up(height.saturating_sub(1)),
+            Direction::PageDown => self.move_down(height.saturating_sub(1)),
+            Direction::Home => self.move_to_start_of_line(),
+            Direction::End => self.move_to_end_of_line(),
+        }
+        self.scroll_text_location_into_view();
+    }
+    fn move_up(&mut self, step: usize) {
+        self.text_location.line_index = self.text_location.line_index.saturating_sub(step);
+        self.snap_to_valid_grapheme();
+    }
+    fn move_down(&mut self, step: usize) {
+        self.text_location.line_index = self.text_location.line_index.saturating_add(step);
+        self.snap_to_valid_grapheme();
+        self.snap_to_valid_line();
+    }
+    // clippy::arithmetic_side_effects: This function performs arithmetic calculations
+    // after explicitly checking that the target value will be within bounds.
+    #[allow(clippy::arithmetic_side_effects)]
+    fn move_right(&mut self) {
+        let line_width = self
+            .buffer
+            .lines
+            .get(self.text_location.line_index)
+            .map_or(0, Line::grapheme_count);
+        if self.text_location.grapheme_index < line_width {
+            self.text_location.grapheme_index += 1;
+        } else {
+            self.move_to_start_of_line();
+            self.move_down(1);
+        }
+    }
+    // clippy::arithmetic_side_effects: This function performs arithmetic calculations
+    // after explicitly checking that the target value will be within bounds.
+    #[allow(clippy::arithmetic_side_effects)]
+    fn move_left(&mut self) {
+        if self.text_location.grapheme_index > 0 {
+            self.text_location.grapheme_index -= 1;
+        } else {
+            self.move_up(1);
+            self.move_to_end_of_line();
+        }
+    }
+    fn move_to_start_of_line(&mut self) {
+        self.text_location.grapheme_index = 0;
+    }
+    fn move_to_end_of_line(&mut self) {
+        self.text_location.grapheme_index = self
+            .buffer
+            .lines
+            .get(self.text_location.line_index)
+            .map_or(0, Line::grapheme_count);
+    }
+
+    // Ensures self.location.grapheme_index points to a valid grapheme index by snapping it to the left most grapheme if appropriate.
+    // Doesn't trigger scrolling.
+    fn snap_to_valid_grapheme(&mut self) {
+        self.text_location.grapheme_index = self
+            .buffer
+            .lines
+            .get(self.text_location.line_index)
+            .map_or(0, |line| {
+                min(line.grapheme_count(), self.text_location.grapheme_index)
+            });
+    }
+    // Ensures self.location.line_index points to a valid line index by snapping it to the bottom most line if appropriate.
+    // Doesn't trigger scrolling.
+    fn snap_to_valid_line(&mut self) {
+        self.text_location.line_index = min(self.text_location.line_index, self.buffer.height());
+    }
+
+    // endregion
+
     fn build_welcome_message(width: usize) -> String {
         if width == 0 {
             return "".to_string();
@@ -184,8 +250,8 @@ impl Default for View {
             needs_redraw: true,
             // Size derives default so unwrap_or_default would return a value or default value (Size { height: 0, width: 0 })
             size: Terminal::size().unwrap_or_default(),
-            location: Location::default(),
-            scroll_offset: Location::default(),
+            text_location: Location::default(),
+            scroll_offset: Position::default(),
         }
     }
 }
