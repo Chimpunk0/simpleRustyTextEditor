@@ -3,6 +3,8 @@ use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::editor::view::line;
+
 #[derive(Copy, Clone)]
 enum GraphemeWidth {
     Half,
@@ -30,7 +32,12 @@ pub struct Line {
 
 impl Line {
     pub fn from(line_str: &str) -> Self {
-        let fragments = line_str
+        let fragments = Self::str_to_fragments(line_str);
+        Self { fragments }
+    }
+
+    fn str_to_fragments(line_str: &str) -> Vec<TextFragment> {
+        line_str
             .graphemes(true)
             .map(|grapheme| {
                 let (replacement, rendered_width) = Self::replacement_character(grapheme)
@@ -52,8 +59,7 @@ impl Line {
                     replacement,
                 }
             })
-            .collect();
-        Self { fragments }
+            .collect()
     }
     fn replacement_character(for_str: &str) -> Option<char> {
         let width = for_str.width();
@@ -112,5 +118,23 @@ impl Line {
                 GraphemeWidth::Full => 2,
             })
             .sum() // takes previous numerical values returned by map and sums them up
+    }
+    pub fn insert_char(&mut self, character: char, grapheme_index: usize) {
+        let mut result = String::new();
+
+        for (index, fragment) in self.fragments.iter().enumerate() {
+            // enumerate ensures we get the index of each fragment
+            // Here, we push the current grapheme to the string. Taking a step back,
+            // we're pushing each grapheme into the result string, and if we happen to be at the place of insertion,
+            // we first push the new character and then proceed to pushing the remaining graphemes.
+            if index == grapheme_index {
+                result.push(character);
+            }
+            result.push_str(&fragment.grapheme);
+        }
+        if grapheme_index >= self.fragments.len() {
+            result.push(character);
+        }
+        self.fragments = Self::str_to_fragments(&result); // rebuild fragments from the result string
     }
 }
