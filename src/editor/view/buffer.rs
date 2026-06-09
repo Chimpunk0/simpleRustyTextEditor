@@ -37,8 +37,10 @@ impl Buffer {
         }
     }
     pub fn delete(&mut self, at: Location) {
-        if let Some(line) = self.lines.get_mut(at.line_index) {
-            line.delete(at.grapheme_index);
+        if let Some(line) = self.lines.get(at.line_index) {
+            if at.grapheme_index >= line.grapheme_count()
+                && self.lines.len() > at.line_index.saturating_add(1)
+            {}
         }
     }
 }
