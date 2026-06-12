@@ -25,7 +25,7 @@ struct TextFragment {
     rendered_width: GraphemeWidth,
     replacement: Option<char>,
 }
-
+#[derive(Default)] // this allows us to quickly create a default - empty line
 pub struct Line {
     fragments: Vec<TextFragment>,
 }
@@ -119,7 +119,7 @@ impl Line {
             })
             .sum() // takes previous numerical values returned by map and sums them up
     }
-    pub fn insert_char(&mut self, character: char, grapheme_index: usize) {
+    pub fn insert_char(&mut self, character: char, at: usize) {
         let mut result = String::new();
 
         for (index, fragment) in self.fragments.iter().enumerate() {
@@ -127,21 +127,21 @@ impl Line {
             // Here, we push the current grapheme to the string. Taking a step back,
             // we're pushing each grapheme into the result string, and if we happen to be at the place of insertion,
             // we first push the new character and then proceed to pushing the remaining graphemes.
-            if index == grapheme_index {
+            if index == at {
                 result.push(character);
             }
             result.push_str(&fragment.grapheme);
         }
-        if grapheme_index >= self.fragments.len() {
+        if at >= self.fragments.len() {
             result.push(character);
         }
         self.fragments = Self::str_to_fragments(&result); // rebuild fragments from the result string
     }
-    pub fn delete(&mut self, grapheme_index: usize) {
+    pub fn delete(&mut self, at: usize) {
         let mut result = String::new();
 
         for (index, fragment) in self.fragments.iter().enumerate() {
-            if index != grapheme_index {
+            if index != at {
                 result.push_str(&fragment.grapheme);
             }
         }
@@ -152,6 +152,15 @@ impl Line {
         let mut concat = self.to_string();
         concat.push_str(&other.to_string());
         self.fragments = Self::str_to_fragments(&concat);
+    }
+    pub fn split(&mut self, at: usize) -> Self {
+        if at > self.fragments.len() {
+            return Self::default();
+        }
+        let remainder = self.fragments.split_off(at);
+        Self {
+            fragments: remainder,
+        }
     }
 }
 
