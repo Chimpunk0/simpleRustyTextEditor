@@ -3,6 +3,9 @@ use std::convert::TryFrom;
 
 use super::terminal::Size;
 
+#[derive(Clone, Copy)] // We want to derive Clone & Copy for EditorCommand,
+// and can only do so if we derive it for Direction as well.
+
 pub enum Direction {
     PageUp,
     PageDown,
@@ -13,6 +16,8 @@ pub enum Direction {
     Right,
     Down,
 }
+#[derive(Clone, Copy)] // for small structs we're passing copies around - to do so,
+//we're deriving clone and copy here.
 pub enum EditorCommand {
     Move(Direction),
     Resize(Size),

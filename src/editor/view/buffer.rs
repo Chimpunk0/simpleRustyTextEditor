@@ -23,6 +23,15 @@ impl Buffer {
             file_name: Some(file_name.to_string()),
         })
     }
+    pub fn save(&self) -> Result<(), Error> {
+        if let Some(file_name) = &self.file_name {
+            let mut file = File::create(file_name)?;
+            for line in &self.lines {
+                writeln!(file, "{}", line)?; // no to_string function needed because Line implements Display
+            }
+        }
+        Ok(())
+    }
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }

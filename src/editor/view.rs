@@ -2,6 +2,7 @@ use self::line::Line;
 use std::cmp::min;
 
 use super::{
+    DocumentStatus,
     editorcommand::{Direction, EditorCommand},
     terminal::{Position, Size, Terminal},
 };
@@ -26,6 +27,20 @@ pub struct View {
 }
 
 impl View {
+    pub fn new(margin_bottom: usize) -> Self {
+        let terminal_size = Terminal::size();
+        Self {
+            buffer: Buffer::default(),
+            needs_redraw: true,
+            size: Size {
+                width: terminal_size.width,
+                height: terminal_size.height.saturating_sub(margin_bottom),
+            },
+            text_location: Location::default(),
+            scroll_offset: Position::default(),
+        }
+    }
+    pub fn get_status(&self) -> DocumentStatus {}
     pub fn handle_command(&mut self, command: EditorCommand) {
         match command {
             EditorCommand::Resize(size) => self.resize(size),
