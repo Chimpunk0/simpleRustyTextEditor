@@ -4,28 +4,27 @@ use std::{
     io::Error,
     panic::{set_hook, take_hook},
 };
+mod documentstatus;
 mod editorcommand;
+mod fileinfo;
 mod statusbar;
 mod terminal;
 mod view;
 
+use documentstatus::DocumentStatus;
 use editorcommand::EditorCommand;
 use statusbar::StatusBar;
 use terminal::Terminal;
 use view::View;
 
-#[derive(Default, Eq, PartialEq, Debug)]
-pub struct DocumentStatus {
-    total_lines: usize,
-    current_line_index: usize,
-    is_modified: bool,
-    file_name: Option<String>,
-}
+pub const NAME: &str = env!("CARGO_PKG_NAME");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct Editor {
     should_quit: bool,
     view: View,
     status_bar: StatusBar,
+    title: String, // title of the terminal
 }
 
 impl Editor {
@@ -36,24 +35,28 @@ impl Editor {
             current_hook(panic_info);
         }));
         Terminal::initialize()?;
-        let mut view = View::new(2); // number is margin from the bottom
+        let mut editor = Self {
+            should_quit: false,
+            view: View::new(2),
+            status_bar: StatusBar::new(1),
+            title: String::new(),
+        };
         let args: Vec<String> = env::args().collect();
         if let Some(file_name) = args.get(1) {
-            view.load(file_name);
+            editor.view.load(file_name);
         }
-        Ok(Self {
-            should_quit: false,
-            view,
-            status_bar: StatusBar::new(1), // number is margin from the bottom
-        })
+        editor.refresh_status();
+        Ok(editor)
     }
 
-    /*Self is the same as this in java
-    &self means that the function takes a reference to an instance of struct it is implemented on,
-    in this case, an Editor instance
-    -> Result<(), std::io::Error> means that the function returns a Result type,
-    either Ok with nothing or Err with a std::io::Error in it
-    */
+    pub fn refresh_status(&mut self) {
+        let status = self.view.get_status();
+        let title = format!("{} - {NAME}", status.file_name);
+        self.status_bar.update_status(status);
+        if title != self.title && matches!(Terminal::set_title(&title), Ok(())) {
+            self.title = title;
+        }
+    }
 
     pub fn run(&mut self) {
         loop {
