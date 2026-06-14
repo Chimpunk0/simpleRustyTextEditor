@@ -8,7 +8,8 @@ use super::line::Line;
 #[derive(Default)]
 pub struct Buffer {
     pub lines: Vec<Line>,
-    file_name: Option<String>,
+    pub file_name: Option<String>,
+    pub dirty: bool,
 }
 
 impl Buffer {
@@ -21,14 +22,16 @@ impl Buffer {
         Ok(Self {
             lines,
             file_name: Some(file_name.to_string()),
+            dirty: false,
         })
     }
-    pub fn save(&self) -> Result<(), Error> {
+    pub fn save(&mut self) -> Result<(), Error> {
         if let Some(file_name) = &self.file_name {
             let mut file = File::create(file_name)?;
             for line in &self.lines {
                 writeln!(file, "{}", line)?; // no to_string function needed because Line implements Display
             }
+            self.dirty = false;
         }
         Ok(())
     }
@@ -46,8 +49,10 @@ impl Buffer {
         if at.line_index == self.height() {
             // add a new line at the edge of document
             self.lines.push(Line::from(&character.to_string()));
+            self.dirty = true;
         } else if let Some(line) = self.lines.get_mut(at.line_index) {
             line.insert_char(character, at.grapheme_index);
+            self.dirty = true;
         }
     }
     pub fn delete(&mut self, at: Location) {
@@ -60,10 +65,12 @@ impl Buffer {
                 // clippy::indexing_slicing: we checked for existence of this line in the surrounding if statements
                 #[allow(clippy::indexing_slicing)]
                 self.lines[at.line_index].append(&next_line);
+                self.dirty = true;
             } else if at.grapheme_index < line.grapheme_count() {
                 // clippy::indexing_slicing: We checked for existence of this line in the surrounding if statment
                 #[allow(clippy::indexing_slicing)]
                 self.lines[at.line_index].delete(at.grapheme_index);
+                self.dirty = true;
             }
         }
     }
@@ -71,10 +78,12 @@ impl Buffer {
         if at.line_index == self.height() {
             // if we are at the end of the document, add a new line
             self.lines.push(Line::default());
+            self.dirty = true;
         } else if let Some(line) = self.lines.get_mut(at.line_index) {
             // otherwise, split the line at the given index
             let new = line.split(at.grapheme_index);
             self.lines.insert(at.line_index.saturating_add(1), new);
+            self.dirty = true;
         }
     }
 }
