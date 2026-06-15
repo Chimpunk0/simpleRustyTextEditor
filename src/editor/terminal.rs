@@ -8,7 +8,7 @@ use crossterm::{Command, queue};
 use std::io::{Error, Write, stdout};
 // Write is a Trait used to write to a stream.
 
-#[derive(Default, Copy, Clone)] // Copy and Clone are used to make a copy of a struct. - Traits
+#[derive(Default, Copy, Clone, Eq, PartialEq)] // eq and partial_eq are used to compare two structs for equality
 pub struct Size {
     pub height: usize,
     pub width: usize,
